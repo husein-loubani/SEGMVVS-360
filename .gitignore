@@ -1,3 +1,7 @@
+# =========================
+# C++ / Compilation
+# =========================
+
 # Prerequisites
 *.d
 
@@ -37,5 +41,62 @@
 *.out
 *.app
 
-# debug information files
+# Debug information files
 *.dwo
+
+
+# =========================
+# ROS / Catkin / CMake
+# =========================
+build/
+devel/
+install/
+CMakeFiles/
+CMakeCache.txt
+*.launch~
+*.cfgc
+
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.env/
+.venv/
+ENV/
+env/
+venv/
+
+# Package metadata
+*.egg-info/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# =========================
+# Editors / OS
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+
+# =========================
+# Data / Results
+# =========================
+data/*
+results/*
+
+# Keep only small demo files
+!data/sample/
+!results/demo/
