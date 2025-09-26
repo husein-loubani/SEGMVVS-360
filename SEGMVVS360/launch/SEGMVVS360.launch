@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Core SEGMVVS360 -->
+  <arg name="verbose"             default="1"/>
+  <arg name="im_width"            default="320"/>
+  <arg name="im_height"           default="160"/>
+  <arg name="im_size_factor"      default="1.0"/>
+  <arg name="depth"               default="10.0"/>
+
+  <arg name="gain_step1"          default="0.5"/>
+  <arg name="gain_step2"          default="0.5"/>
+  <arg name="lambda_step1"        default="10.0"/>
+  <arg name="lambda_step2"        default="2.0"/>
+  <arg name="iterations_step1"    default="15"/>
+  <arg name="iterations_step2"    default="15"/>
+
+  <arg name="binary_mask"         default="true"/>
+  <arg name="simulator"           default="false"/>
+  <arg name="pgm_service_name"    default="/compute_equirectangular_gaussian_mixture_lambda"/>
+
+  <!-- I/O paths -->
+  <arg name="image_dir"           default="$(env HOME)/PhD_CIAD/CODE/ros_noetic_visp_libper/share/frames/"/>
+  <arg name="results_root"        default="$(env HOME)/PhD_CIAD/CODE/ros_noetic_visp_libper/share/Results"/>
+
+  <!-- Topics -->
+  <arg name="topic_name"          default="/real_image"/>
+  <arg name="remap_mask"          default="/skyline/mask"/>
+  <arg name="remap_color"         default="/skyline/color"/>
+  <arg name="remap_get_pose"      default="/skyline_controller/pose"/>
+  <arg name="remap_set_pose"      default="/skyline_controller/set_pose"/>
+  <arg name="remap_depth"         default="/skyline/depth"/>
+
+  <!-- Segmentation -->
+  <arg name="use_dynamic_mask"    default="true"/>
+  <arg name="target_class_ids"    default="[2]"/> <!-- buildings -->
+  <arg name="dynamic_class_ids"   default="[11,12,13,14,15,16,17,18]"/> <!-- vehicles, pedestrians -->
+
+  <!-- Publisher controls -->
+  <arg name="skip_stride"         default="1"/>
+  <arg name="max_frames"          default="-1"/>
+
+  <!-- Real Image Publisher -->
+  <node pkg="SEGMVVS360" type="real_image_publisher.py" name="real_image_publisher" output="screen">
+    <param name="image_dir"        value="$(arg image_dir)"/>
+    <param name="topic_name"       value="$(arg topic_name)"/>
+    <param name="skip_stride"      value="$(arg skip_stride)"/>
+    <param name="max_frames"       value="$(arg max_frames)"/>
+  </node>
+
+  <!-- Main SEGMVVS360 node -->
+  <node pkg="SEGMVVS360" type="SEGMVVS360" name="segmvvs360_node" output="screen" respawn="false">
+
+    <!-- Topic Remappings -->
+    <remap from="/segmvvs360/simulator/mask"     to="$(arg remap_mask)"/>
+    <remap from="/segmvvs360/simulator/color"    to="$(arg remap_color)"/>
+    <remap from="/segmvvs360/simulator/get_pose" to="$(arg remap_get_pose)"/>
+    <remap from="/segmvvs360/simulator/set_pose" to="$(arg remap_set_pose)"/>
+    <remap from="/segmvvs360/simulator/depth"    to="$(arg remap_depth)"/>
+
+    <!-- Parameters -->
+    <param name="verbose"             value="$(arg verbose)"/>
+    <param name="im_width"            value="$(arg im_width)"/>
+    <param name="im_height"           value="$(arg im_height)"/>
+    <param name="im_size_factor"      value="$(arg im_size_factor)"/>
+    <param name="depth"               value="$(arg depth)"/>
+
+    <param name="gain_step1"          value="$(arg gain_step1)"/>
+    <param name="gain_step2"          value="$(arg gain_step2)"/>
+    <param name="lambda_step1"        value="$(arg lambda_step1)"/>
+    <param name="lambda_step2"        value="$(arg lambda_step2)"/>
+    <param name="iterations_step1"    value="$(arg iterations_step1)"/>
+    <param name="iterations_step2"    value="$(arg iterations_step2)"/>
+
+    <param name="binary_mask"         value="$(arg binary_mask)"/>
+    <param name="simulator"           value="$(arg simulator)"/>
+    <param name="pgm_service_name"    value="$(arg pgm_service_name)"/>
+
+    <param name="results_root"        value="$(arg results_root)"/>
+    <param name="save_all_iterations" value="true"/>
+  </node>
+
+  <!-- Segmentation Service -->
+  <node pkg="SEGMVVS360" type="building_segmentation.py" name="building_segmentation_service" output="screen">
+    <param name="im_width"            value="$(arg im_width)"/>
+    <param name="im_height"           value="$(arg im_height)"/>
+    <param name="use_dynamic_mask"    value="$(arg use_dynamic_mask)"/>
+    <param name="target_class_ids"    value="$(arg target_class_ids)"/>
+    <param name="dynamic_class_ids"   value="$(arg dynamic_class_ids)"/>
+  </node>
+
+  <!-- Gaussian Mixture Server -->
+  <node pkg="gaussian_mixture" type="gaussian_mixture_server" name="gaussian_mixture_server" output="screen"/>
+</launch>
