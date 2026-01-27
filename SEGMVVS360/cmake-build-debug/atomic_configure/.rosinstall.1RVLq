@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/nathan/ROS/Noetic/catkin_ws/src/EquiSkylineVS/cmake-build-debug/devel/setup.sh
