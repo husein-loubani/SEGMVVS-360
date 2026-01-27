@@ -1,8 +1,0 @@
-sensor_msgs/Image I
-sensor_msgs/Image rgb
-float32 beta
----
-sensor_msgs/Image G
-sensor_msgs/Image dGdu
-sensor_msgs/Image dGdv
-sensor_msgs/Image dGdb
