@@ -1,0 +1,9 @@
+sensor_msgs/Image I
+float32 beta
+float32 ratio
+float32 theta
+---
+sensor_msgs/Image G
+sensor_msgs/Image dGdu
+sensor_msgs/Image dGdv
+sensor_msgs/Image dGdb
