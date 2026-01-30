@@ -2,7 +2,7 @@
  * SEGMVVS: Semantic Equirectangular Gaussian Mixture Virtual Visual Servoing
  * Author: Hussein LOUBANI (Hussein.loubani@utbm.fr)
  * Institution: CIAD-UTBM
- * Date: December 2025
+ * Date: Feb 2026
  */
 
 //// ROS
