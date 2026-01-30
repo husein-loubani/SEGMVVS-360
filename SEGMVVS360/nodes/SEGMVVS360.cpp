@@ -332,8 +332,11 @@ void cameraPosesInitialization() {
     } while (!vpDisplay::getClick(equiR, false));
 
     // Log desired pose
+    desiredRobotPose = currentRobotPose;  // desired = pose at start
+    
     if (poseLog.is_open()) {
-        poseLog << desiredRobotPose[0] << " " << desiredRobotPose[1] << " " << desiredRobotPose[2] << "\n";
+        poseLog << desiredRobotPose[0] << " " << desiredRobotPose[1] << " " << desiredRobotPose[2] << " "
+                << desiredRobotPose[3] << " " << desiredRobotPose[4] << " " << desiredRobotPose[5] << "\n";
         poseLog.flush();
     }
 }
