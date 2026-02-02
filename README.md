@@ -1,4 +1,4 @@
-# SEGMVVS 360: Semantic Equirectangular Gaussian Mixture Virtual Visual Servoing
+# Semantic Equirectangular Visual Tracking in Lightweight 3D Building Reconstructions
 
 A visual tracking system designed to align real-world **360° equirectangular images** with **synthetic views** rendered from **lightweight 3D building models**. It enables robust camera pose estimation and robot velocity control by combining **semantic segmentation**, **Gaussian Mixture** representations, and a **Virtual Visual Servoing** framework, with support for **frequency-domain acceleration** and **seamless equirectangular handling**.
 
