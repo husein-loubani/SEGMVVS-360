@@ -5,12 +5,11 @@
   <arg name="im_width"                    default="320"/>
   <arg name="im_height"                   default="160"/>
   <arg name="im_size_factor"              default="1.0"/>
-  <arg name="depth"                       default="10.0"/>
 
   <arg name="gain_step1"                  default="0.5"/>
   <arg name="gain_step2"                  default="0.5"/>
   <arg name="lambda_step1"                default="10.0"/>
-  <arg name="lambda_step2"                default="2.0"/>
+  <arg name="lambda_step2"                default="1.0"/>
   <arg name="iterations_step1"            default="15"/>
   <arg name="iterations_step2"            default="15"/>
 
@@ -20,6 +19,7 @@
   <!-- I/O paths -->
   <arg name="image_dir"                   default="$(env HOME)/PhD_CIAD/CODE/ros_noetic_visp_libper/share/frames/"/>
   <arg name="results_root"                default="$(env HOME)/PhD_CIAD/CODE/ros_noetic_visp_libper/share/Results"/>
+  <arg name="save_results"                default="true"/>
   <arg name="save_all_iterations"         default="false"/>
 
   <!-- Topics -->
@@ -40,7 +40,6 @@
   <arg name="max_frames"                  default="-1"/>
 
   <arg name="seg_service_name"            default="/building_segmentation"/>
-  <arg name="total_targets"               default="0"/>
 
   <!-- Real Image Publisher -->
   <node pkg="SEGMVVS360" type="real_image_publisher.py" name="real_image_publisher" output="screen">
@@ -66,9 +65,7 @@
     <param name="im_width"                value="$(arg im_width)"/>
     <param name="im_height"               value="$(arg im_height)"/>
     <param name="im_size_factor"          value="$(arg im_size_factor)"/>
-    <param name="depth"                   value="$(arg depth)"/>
     <param name="seg_service_name"        value="$(arg seg_service_name)"/>
-    <param name="total_targets"           value="$(arg total_targets)"/>
 
     <param name="gain_step1"              value="$(arg gain_step1)"/>
     <param name="gain_step2"              value="$(arg gain_step2)"/>
@@ -80,6 +77,7 @@
     <param name="pgm_service_name"        value="$(arg pgm_service_name)"/>
 
     <param name="results_root"            value="$(arg results_root)"/>
+    <param name="save_results"            value="$(arg save_results)"/>
     <param name="save_all_iterations"     value="$(arg save_all_iterations)"/>
   </node>
 
