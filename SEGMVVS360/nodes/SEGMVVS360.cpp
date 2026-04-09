@@ -2,13 +2,12 @@
  * SEGMVVS: Semantic Equirectangular Gaussian Mixture Virtual Visual Servoing
  * Author: Hussein LOUBANI (Hussein.loubani@utbm.fr)
  * Institution: CIAD-UTBM
- * Date: Feb 2026
+ * Date: December 2025
  */
 
 //// ROS
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/Twist.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
@@ -16,7 +15,6 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <std_msgs/UInt32.h>
-#include <tf/transform_listener.h>
 
 //// Boost
 #include <boost/filesystem.hpp>
@@ -29,7 +27,6 @@
 #include <visp/vpImageIo.h>
 #include <visp/vpImageTools.h>
 #include <visp/vpPlot.h>
-#include <visp3/core/vpImageFilter.h>
 #include <visp_bridge/3dpose.h>
 #include <visp_bridge/image.h>
 
@@ -49,6 +46,7 @@
 ros::Publisher robotVelocityPub;
 ros::Publisher nextFrameTriggerPub;
 ros::ServiceClient PGMClient;
+ros::ServiceClient segClient;
 gaussian_mixture::ComputeGaussianMixture PGMmsg;
 
 // Image sizes and buffers
@@ -66,11 +64,10 @@ vpPlot plot;
 vpPoseVector desiredRobotPose, currentRobotPose, initialRobotPose;
 vpMatrix L;
 vpColVector e, v;
-double depth = 1.0;
 int iter = 0;
 int plot_iter = 0;
-double gain_step1 = 1.0, gain_step2 = 1.0, lambda_step1 = 10.0, lambda_step2 = 2.0;
-double gain_cur = 1.0, lambda_cur = 0.0;
+double gain_step1 = 0.5, gain_step2 = 0.5, lambda_step1 = 10.0, lambda_step2 = 1.0;
+double gain_cur = 0.5, lambda_cur = 0.0;
 bool vsStarted = false;
 
 // Multi-frame
@@ -91,7 +88,8 @@ bool hasDynMask = false;
 
 // Output control
 static std::string results_root;
-static bool save_all_iterations = true;
+static bool save_results = false;
+static bool save_all_iterations = false;
 
 // Topics
 static std::string real_image_topic;
@@ -101,7 +99,6 @@ static std::string get_pose_topic;
 static std::string set_pose_topic;
 static std::string depth_topic;
 static std::string seg_service_name;
-static int total_targets = 0;
 
 // Build subpaths under results_root
 static std::string Dir(const std::string &sub) {
@@ -120,13 +117,9 @@ void computeEquirectangularGaussianMixtureInteraction(vpImage<float> &dGdu, vpIm
                                                       vpImage<float> &D);
 void computeGaussianMixtureErrorVector(vpImage<float> G, vpImage<float> Gd, vpColVector &e,
                                        vpImage<float> D);
-void computePhotometricErrorVector(vpImage<unsigned char> I, vpImage<unsigned char> Id,
-                                   vpColVector &e, vpImage<float> D);
-void computeEquirectangularPhotometricInteraction(vpImage<unsigned char> I, vpMatrix &L,
-                                                  vpImage<float> &D);
 void displayAndFlush(vpImage<unsigned char> &I);
 void displayAndFlush(vpImage<vpRGBa> &I);
-bool computeGMM(const vpImage<unsigned char> &I, double beta, const vpImage<vpRGBa> &rgb,
+bool computeGMM(const vpImage<unsigned char> &I, double beta,
                 vpImage<float> *G_out, vpImage<float> *dGdu_out, vpImage<float> *dGdv_out,
                 vpImage<float> *dGdb_out);
 void saveInitialImagesForFrame(int idx);
@@ -140,8 +133,6 @@ void allocateImageBuffers();
 void initializeDisplayWindows();
 void initializePlots();
 
-vpHomogeneousMatrix vpHomogeneousMatrixFromROSTransform(std::string frame_i, std::string frame_o);
-geometry_msgs::Twist geometryTwistFromvpColVector(vpColVector vpVelocity);
 vpImage<float> imageMsgToVpImageFloat(const sensor_msgs::Image &Imsg);
 
 //// Main
@@ -174,25 +165,36 @@ int main(int argc, char **argv) {
 
     // ROS Parameters
     verbose          = nh.param("verbose",           1);
-    gain_step1       = nh.param("gain_step1",      1.0);
-    gain_step2       = nh.param("gain_step2",      1.0);
+    gain_step1       = nh.param("gain_step1",      0.5);
+    gain_step2       = nh.param("gain_step2",      0.5);
     lambda_step1     = nh.param("lambda_step1",   10.0);
-    lambda_step2     = nh.param("lambda_step2",    2.0);
+    lambda_step2     = nh.param("lambda_step2",    1.0);
     iterations_step1 = nh.param("iterations_step1", 15);
     iterations_step2 = nh.param("iterations_step2", 15);
-    depth            = nh.param("depth",           1.0);
     imSizeFactor     = nh.param("im_size_factor",  1.0);
     imWidth          = nh.param("im_width",         320) * imSizeFactor;
     imHeight         = nh.param("im_height",        160) * imSizeFactor;
 
     // Output control
     results_root = nh.param<std::string>("results_root", std::string());
+    save_results = nh.param("save_results", false);
     save_all_iterations = nh.param("save_all_iterations", false);
+    if (save_results && results_root.empty()) {
+        ROS_WARN("save_results is true but results_root is empty, disabling save_results");
+        save_results = false;
+    }
 
     // Initialize Gaussian Mixture service client
     std::string pgm_service;
     nh.param<std::string>("pgm_service_name", pgm_service, "/compute_equirectangular_gaussian_mixture_lambda");
+    ROS_INFO_STREAM("Waiting for PGM service: " << pgm_service);
+    ros::service::waitForService(pgm_service);
     PGMClient = nh.serviceClient<gaussian_mixture::ComputeGaussianMixture>(pgm_service);
+
+    // Initialize segmentation service client
+    ROS_INFO_STREAM("Waiting for segmentation service: " << seg_service_name);
+    ros::service::waitForService(seg_service_name);
+    segClient = nh.serviceClient<SEGMVVS360::building_segmentation>(seg_service_name);
 
     // Initialize robot velocity publisher
     robotVelocityPub = nh.advertise<geometry_msgs::Pose>(set_pose_topic, 1);
@@ -224,11 +226,13 @@ int main(int argc, char **argv) {
     // Initialize diagnostic plots
     initializePlots();
 
+    // Always save pose log
+    poseLog.open(results_root.empty() ? "pose_log.txt" : Dir("pose_log.txt").c_str());
+
     // Prepare outputs if requested
-    if (!results_root.empty()) {
+    if (save_results) {
         prepareOutputDirectories();
 
-        poseLog.open(Dir("pose_log.txt").c_str());
         velLog.open(Dir("vel_log.txt").c_str());
         velLog << "vx vy vz wx wy wz lambda\n";
         timeLog.open(Dir("time_log.txt").c_str());
@@ -276,9 +280,6 @@ void cameraPosesInitialization() {
     vpImageTools::resize(Itmp, equiR, imWidth, imHeight);
     displayAndFlush(equiR);
 
-    ROS_INFO_STREAM("Waiting for segmentation service: " << seg_service_name << "...");
-    ros::service::waitForService(seg_service_name);
-    ros::ServiceClient segClient = ros::NodeHandle().serviceClient<SEGMVVS360::building_segmentation>(seg_service_name);
     SEGMVVS360::building_segmentation srv;
 
     srv.request.real_rgb_image = *realImageMsg;
@@ -306,11 +307,16 @@ void cameraPosesInitialization() {
 
     // Compute Desired Gaussian Mixture
     lambda_cur = lambda_step1;
-    if (computeGMM(equiId, lambda_step1, equiR, &Gd, nullptr, nullptr, nullptr)) {
+    if (computeGMM(equiId, lambda_step1, &Gd, nullptr, nullptr, nullptr)) {
+        if (Gd.getHeight() == 0 || Gd.getWidth() == 0) {
+            ROS_ERROR("Gaussian Mixture response is empty.");
+            return;
+        }
         ROS_INFO("Gaussian Mixture computation succeeded.");
         toRGBImage(Gd, IGd);
     } else {
         ROS_ERROR("Gaussian Mixture service call failed.");
+        return;
     }
 
     // Initial pose selection
@@ -354,11 +360,9 @@ void cameraImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &equiImsg,
     } else {
         equiI = visp_bridge::toVispImage(*equiImsg);
         equiColorI = visp_bridge::toVispImageRGBa(*equiColorImsg);
-
-        preprocessMask(equiI, dynMask, hasDynMask);
-
         equiD = imageMsgToVpImageFloat(*equiDmsg);
     }
+    preprocessMask(equiI, dynMask, hasDynMask);
 
     // Extract the current robot pose
     currentRobotPose = vpPoseVector(visp_bridge::toVispHomogeneousMatrix(robotPoseMsg->pose));
@@ -383,34 +387,33 @@ void cameraImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &equiImsg,
     }
 
     // Compute current GMM and gradients
-    computeGMM(equiI, lambda_cur, equiR, &G, &dGdu, &dGdv, &dGdb);
+    if (!computeGMM(equiI, lambda_cur, &G, &dGdu, &dGdv, &dGdb)) {
+        ROS_ERROR("GMM service call failed during VS loop, skipping iteration.");
+        return;
+    }
 
     // Displays
     displayPanels();
 
     // Save all iterations of the frame if enabled
-    if (save_all_iterations && !results_root.empty()) {
+    if (save_all_iterations && save_results) {
         saveAllIterationImages(iter);
     }
 
     // Save initial image of all frames
-    if (iter == 0 && !results_root.empty()) {
+    if (iter == 0 && save_results) {
         const int idx = currentFrameIdx + 1;
         saveInitialImagesForFrame(idx);
     }
 
     // Compute interaction matrix from image gradients
     computeEquirectangularGaussianMixtureInteraction(dGdu, dGdv, dGdb, L, equiD);
-    // computeEquirectangularPhotometricInteraction(equiI, L, equiD);
 
     // Compute error vector between current and desired images
     computeGaussianMixtureErrorVector(G, Gd, e, equiD);
-    // computePhotometricErrorVector(equiI, equiId, e, equiD);
 
     // Gauss-Newton Control law
     vpColVector vl(7);
-    // vpColVector vl(6); // If Photometric is used
-
     vl = -gain_cur * L.pseudoInverseEigen3() * e;
     v[0] = vl[0];
     v[1] = vl[1];
@@ -470,7 +473,7 @@ void cameraImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &equiImsg,
         toRGBImage(G, IG);
         toRGBImage(Gd, IGd);
 
-        if (!results_root.empty()) {
+        if (save_results) {
             const int idx = currentFrameIdx + 1;
             saveFinalImagesForFrame(idx);
         }
@@ -499,10 +502,7 @@ void cameraImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &equiImsg,
         vpImageTools::resize(tmpRGB, equiR, imWidth, imHeight);
 
         // ROS_INFO("Calling segmentation for new frame...");
-        ros::ServiceClient segClient =
-            ros::NodeHandle().serviceClient<SEGMVVS360::building_segmentation>(seg_service_name);
         SEGMVVS360::building_segmentation srv;
-
         srv.request.real_rgb_image = *newImageMsg;
 
         if (!segClient.call(srv) || !srv.response.success) {
@@ -516,7 +516,7 @@ void cameraImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &equiImsg,
         }
 
         lambda_cur = lambda_step1;
-        gain_cur = gain_step1;
+        gain_cur   = gain_step1;
 
         displayAndFlush(equiS);
         displayAndFlush(equiId);
@@ -541,7 +541,7 @@ void computeEquirectangularGaussianMixtureInteraction(vpImage<float> &dGdu_, vpI
     float *ptrdGdv = dGdv_.bitmap;
     float *ptrdGdb = dGdb_.bitmap;
 
-    double sX, sY, sZ, X, Y, Z, x, y;
+    double sX, sY, sZ, X, Y, Z, x, y, depth;
     double au = dGdu_.getCols() / (2.0 * M_PI);
     double av = dGdu_.getRows() / M_PI;
     double u0 = dGdu_.getCols() / 2.0;
@@ -642,108 +642,6 @@ void computeGaussianMixtureErrorVector(vpImage<float> G, vpImage<float> Gd, vpCo
     }
 }
 
-void computeEquirectangularPhotometricInteraction(vpImage<unsigned char> I, vpMatrix &L,
-                                                  vpImage<float> &D) {
-    L.clear();
-    L.resize((I.getRows() - 20) * (I.getCols() - 20), 6);
-    double sX, sY, sZ, X, Y, Z, x, y;
-    double au = I.getCols() / (2.0 * M_PI);
-    double av = I.getRows() / M_PI;
-    double u0 = I.getCols() / 2.0;
-    double v0 = I.getRows() / 2.0;
-    vpRowVector dIdu(2);
-    vpMatrix dudx(2, 2, 0.0);
-    vpMatrix dxdX(2, 3, 0.0);
-    vpMatrix dXdr(3, 6, 0.0);
-    vpRowVector dIdr(6);
-
-    ////dudx
-    dudx[0][0] = au;
-    dudx[0][1] = 0.0;
-    dudx[1][0] = 0.0;
-    dudx[1][1] = av;
-
-    int i = 0;
-    for (int v = 10; v < I.getRows() - 10; v++) {
-        for (int u = 10; u < I.getCols() - 10; u++, i++) {
-            depth = D[v][u];
-
-            if (depth > 100) depth = 10000;
-
-            ////azimuth, elevation, sphere, camera
-            x = ((double)(u)-u0) / au;
-            y = ((double)(v)-v0) / av;
-            sX = cos(y) * sin(x);
-            sY = sin(y);
-            sZ = cos(y) * cos(x);
-            X = sX * depth;
-            Y = sY * depth;
-            Z = sZ * depth;
-
-            //// dIdu TODO adptation to equi !
-            dIdu[0] = vpImageFilter::derivativeFilterX(I, v, u);
-            dIdu[1] = vpImageFilter::derivativeFilterY(I, v, u);
-
-            ////dxdX
-            double X2 = X * X, Y2 = Y * Y, Z2 = Z * Z;
-            double X2pZ2 = X2 + Z2;
-            double srX2pZ2 = sqrt(X2pZ2);
-            double X2pY2pZ2 = X2pZ2 + Y2;
-            if (X2pZ2 < 1e-8) {
-                dxdX.resize(2, 3, true);
-            } else {
-                dxdX[0][0] = Z / X2pZ2;
-                dxdX[0][1] = 0.;
-                dxdX[0][2] = -X / X2pZ2;
-                dxdX[1][0] = -X * Y / (srX2pZ2 * X2pY2pZ2);
-                dxdX[1][1] = srX2pZ2 / X2pY2pZ2;
-                dxdX[1][2] = -Y * Z / (srX2pZ2 * X2pY2pZ2);
-            }
-            ////dXdr
-            dXdr[0][0] = -1.0;
-            dXdr[0][1] = 0.0;
-            dXdr[0][2] = 0.0;
-            dXdr[1][0] = 0.0;
-            dXdr[1][1] = -1.0;
-            dXdr[1][2] = 0.0;
-            dXdr[2][0] = 0.0;
-            dXdr[2][1] = 0.0;
-            dXdr[2][2] = -1.0;
-            dXdr[0][3] = 0.0;
-            dXdr[0][4] = -Z;
-            dXdr[0][5] = Y;
-            dXdr[1][3] = Z;
-            dXdr[1][4] = 0.0;
-            dXdr[1][5] = -X;
-            dXdr[2][3] = -Y;
-            dXdr[2][4] = X;
-            dXdr[2][5] = 0.0;
-            ////dIdr
-            dIdr = -dIdu * dudx * dxdX * dXdr;
-
-            L.insert(dIdr, i, 0);
-        }
-    }
-}
-
-void computePhotometricErrorVector(vpImage<unsigned char> I, vpImage<unsigned char> Id,
-                                   vpColVector &e, vpImage<float> D) {
-    e.resize((I.getRows() - 20) * (I.getCols() - 20));
-    unsigned char *ptrI = I.bitmap;
-    unsigned char *ptrId = Id.bitmap;
-    int i = 0;
-    for (int v = 10; v < I.getRows() - 10; v++) {
-        for (int u = 10; u < I.getCols() - 10; u++, i++) {
-            float depth = D[v][u];
-            if (depth <= 0.0f || std::isnan(depth)) {
-                e[i] = 0.0;
-            } else {
-                e[i] = ptrI[u + v * I.getCols()] - ptrId[u + v * I.getCols()];
-            }
-        }
-    }
-}
-
 void displayAndFlush(vpImage<unsigned char> &I) {
     vpDisplay::display(I);
     vpDisplay::flush(I);
@@ -754,12 +652,11 @@ void displayAndFlush(vpImage<vpRGBa> &I) {
     vpDisplay::flush(I);
 }
 
-bool computeGMM(const vpImage<unsigned char> &I, double beta, const vpImage<vpRGBa> &rgb,
+bool computeGMM(const vpImage<unsigned char> &I, double beta,
                 vpImage<float> *G_out, vpImage<float> *dGdu_out, vpImage<float> *dGdv_out,
                 vpImage<float> *dGdb_out) {
     PGMmsg.request.I = visp_bridge::toSensorMsgsImage(I);
     PGMmsg.request.beta = beta;
-    PGMmsg.request.rgb = visp_bridge::toSensorMsgsImage(rgb);
 
     if (!PGMClient.call(PGMmsg)) return false;
 
@@ -792,7 +689,7 @@ void preprocessMask(vpImage<unsigned char> &I, const vpImage<unsigned char> &dyn
 }
 
 void updateDesiredGMM(double beta) {
-    computeGMM(equiId, beta, equiR, &Gd, nullptr, nullptr, nullptr);
+    computeGMM(equiId, beta, &Gd, nullptr, nullptr, nullptr);
     toRGBImage(Gd, IGd);
 }
 
@@ -982,37 +879,29 @@ void toRGBImage(vpImage<float> in, vpImage<vpRGBa> &out, float min, float max) {
     vpRGBa *pOut;
     pOut = out.bitmap;
     pIn = in.bitmap;
+    const float range = Max - Min;
+    if (range < 1e-10f) {
+        for (int i = 0; i < in.getHeight() * in.getWidth(); i++, pOut++)
+            *pOut = vpRGBa(0, 0, 0, 255);
+        return;
+    }
     for (int i = 0; i < in.getHeight() * in.getWidth(); i++, pOut++, pIn++) {
-        (*pOut).R = RGB[0][(int)(((64.0 / (Max - Min)) * (*pIn) - (Min * 64.0 / (Max - Min))))];
-        (*pOut).G = RGB[1][(int)(((64.0 / (Max - Min)) * (*pIn) - (Min * 64.0 / (Max - Min))))];
-        (*pOut).B = RGB[2][(int)(((64.0 / (Max - Min)) * (*pIn) - (Min * 64.0 / (Max - Min))))];
+        if (*pIn <= Min || *pIn >= Max) {
+            *pOut = vpRGBa(0, 0, 0, 255);
+        } else {
+            int idx = (int)((64.0f / range) * (*pIn) - (Min * 64.0f / range));
+            if (idx < 0) idx = 0;
+            if (idx > 63) idx = 63;
+            (*pOut).R = RGB[0][idx];
+            (*pOut).G = RGB[1][idx];
+            (*pOut).B = RGB[2][idx];
+        }
     }
 }
 
 /***************************************/
 /**************ROS <-> VISP*************/
 /***************************************/
-
-vpHomogeneousMatrix vpHomogeneousMatrixFromROSTransform(std::string frame_i, std::string frame_o) {
-    geometry_msgs::Pose oMi;
-    tf::StampedTransform oMi_tf;
-    tf::TransformListener listener;
-    listener.waitForTransform(frame_o, frame_i, ros::Time(0), ros::Duration(3.0));
-    listener.lookupTransform(frame_o, frame_i, ros::Time(0), oMi_tf);
-    tf::poseTFToMsg(oMi_tf, oMi);
-    return visp_bridge::toVispHomogeneousMatrix(oMi);
-}
-
-geometry_msgs::Twist geometryTwistFromvpColVector(vpColVector vpVelocity) {
-    geometry_msgs::Twist geoVelocity;
-    geoVelocity.linear.x = vpVelocity[0];
-    geoVelocity.linear.y = vpVelocity[1];
-    geoVelocity.linear.z = vpVelocity[2];
-    geoVelocity.angular.x = vpVelocity[3];
-    geoVelocity.angular.y = vpVelocity[4];
-    geoVelocity.angular.z = vpVelocity[5];
-    return geoVelocity;
-}
 
 vpImage<float> imageMsgToVpImageFloat(const sensor_msgs::Image &Imsg) {
     vpImage<float> I(Imsg.height, Imsg.width);
