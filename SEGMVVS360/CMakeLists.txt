@@ -5,10 +5,10 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  geometry_msgs
   visp_bridge
   message_filters
   sensor_msgs
-  tf
   cv_bridge
   message_generation
 )
@@ -38,7 +38,7 @@ include_directories(
 set(SOURCES nodes/SEGMVVS360.cpp)
 
 add_executable(SEGMVVS360 ${SOURCES})
-target_link_libraries(SEGMVVS360 ${catkin_LIBRARIES})
+target_link_libraries(SEGMVVS360 ${catkin_LIBRARIES} ${VISP_LIBRARIES})
 add_dependencies(SEGMVVS360 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 catkin_install_python(PROGRAMS
