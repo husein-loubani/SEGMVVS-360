@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import os
 import ast
 import cv2
 import numpy as np
@@ -31,7 +30,6 @@ def segment_real_image(req):
     try:
         cv_img = CvBridge().imgmsg_to_cv2(req.real_rgb_image, desired_encoding="rgb8")
         pil_img = PILImage.fromarray(cv_img).convert("RGB")
-
         inputs = processor(pil_img, ["semantic"], return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
@@ -40,6 +38,7 @@ def segment_real_image(req):
         semantic = processor.post_process_semantic_segmentation(
             outputs, target_sizes=[pil_img.size[::-1]]
         )[0]
+
         seg_np = semantic.cpu().numpy().astype("uint8")
 
         target_width = rospy.get_param("~im_width", 320)

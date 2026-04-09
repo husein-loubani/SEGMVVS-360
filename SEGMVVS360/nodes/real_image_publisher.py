@@ -7,7 +7,6 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import UInt32
 from cv_bridge import CvBridge
 
-
 class RealImagePublisher:
     def __init__(self, image_dir: str, real_image_topic: str):
         self.image_dir = image_dir
@@ -27,7 +26,7 @@ class RealImagePublisher:
         self.pub = rospy.Publisher(self.real_image_topic, Image, queue_size=1, latch=False)
         rospy.Subscriber("/next_frame_trigger", UInt32, self.trigger_callback)
 
-        # C++ reads private param: /segmvvs360_node/total_targets
+        # C++ side reads global /total_targets to know how many frames to process
         rospy.set_param("/total_targets", len(self.images))
 
         rospy.loginfo(
