@@ -226,6 +226,11 @@ int main(int argc, char **argv) {
     // Initialize diagnostic plots
     initializePlots();
 
+    // make sure the output folder exists before opening any log
+    if (!results_root.empty()) {
+        boost::filesystem::create_directories(results_root);
+    }
+
     // Always save pose log
     poseLog.open(results_root.empty() ? "pose_log.txt" : Dir("pose_log.txt").c_str());
 
