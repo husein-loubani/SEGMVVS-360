@@ -100,3 +100,8 @@ results/*
 # Keep only small demo files
 !data/sample/
 !results/demo/
+cmake-build-debug/
+build/
+devel/
+*.pyc
+__pycache__/

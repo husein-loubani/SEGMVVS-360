@@ -33,7 +33,7 @@ This repository implements the system described in the paper:
 ### 1. Clone and build the workspace
 
 ```bash
-git clone <your-repo-url> ~/catkin_ws/src
+git clone https://github.com/husein-loubani/SEGMVVS-360.git ~/catkin_ws/src
 cd ~/catkin_ws
 catkin_make
 source devel/setup.bash
